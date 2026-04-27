@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Agents Research Assistant</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.6.1/dist/reveal.css">
+<style>
+/* ── reset & base ─────────────────────────────────────────────────── */
+:root {
+  --bg:       #0a0e1a;
+  --card:     #0f1729;
+  --border:   #1e2d45;
+  --cyan:     #00d4ff;
+  --purple:   #7c3aed;
+  --green:    #10b981;
+  --amber:    #f59e0b;
+  --red:      #ef4444;
+  --pink:     #f472b6;
+  --text:     #e2e8f0;
+  --muted:    #64748b;
+  --dim:      #334155;
+}
+
+.reveal-viewport { background: var(--bg); }
+.reveal          { background: var(--bg); font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; color: var(--text); }
+
+.reveal .slides section {
+  display: flex !important;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  height: 100%;
+  padding: 48px 64px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+/* center-aligned slides */
+.reveal .slides section.center {
+  align-items: center;
+  text-align: center;
+}
+
+/* ── typography ───────────────────────────────────────────────────── */
+.reveal h1 { font-size: 3rem;   font-weight: 900; color: var(--cyan);   letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 12px; }
+.reveal h2 { font-size: 2rem;   font-weight: 800; color: var(--text);   letter-spacing: -0.02em; margin: 0 0 32px; }
+.reveal h3 { font-size: 1.3rem; font-weight: 700; color: var(--cyan);   margin: 0 0 16px; }
+.reveal p  { font-size: 1.05rem; color: var(--text); line-height: 1.65; margin: 0 0 12px; }
+
+.reveal ul { list-style: none; padding: 0; margin: 0; }
+.reveal ul li {
+  padding: 8px 0 8px 24px;
+  position: relative;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+.reveal ul li::before { content: "›"; position: absolute; left: 0; color: var(--cyan); font-weight: 700; }
+
+.label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+/* ── slide numbering ──────────────────────────────────────────────── */
+.slide-num {
+  position: absolute;
+  top: 20px;
+  right: 28px;
+  font-size: 0.7rem;
+  color: var(--dim);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+/* ── cards ────────────────────────────────────────────────────────── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin: 8px 0;
+}
+.card.accent-cyan   { border-left: 3px solid var(--cyan);   }
+.card.accent-purple { border-left: 3px solid var(--purple); }
+.card.accent-green  { border-left: 3px solid var(--green);  }
+.card.accent-amber  { border-left: 3px solid var(--amber);  }
+.card.accent-red    { border-left: 3px solid var(--red);    }
+.card.accent-pink   { border-left: 3px solid var(--pink);   }
+
+.card-title { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+.card-title.cyan   { color: var(--cyan);   }
+.card-title.purple { color: var(--purple); }
+.card-title.green  { color: var(--green);  }
+.card-title.amber  { color: var(--amber);  }
+.card-title.red    { color: var(--red);    }
+.card-title.pink   { color: var(--pink);   }
+.card p { font-size: 0.9rem; color: #94a3b8; margin: 0; line-height: 1.5; }
+
+/* ── grid layouts ─────────────────────────────────────────────────── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; width: 100%; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; width: 100%; }
+
+/* ── pipeline diagram ─────────────────────────────────────────────── */
+.pipeline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px 20px;
+  width: 100%;
+  box-sizing: border-box;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.p-node { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 72px; }
+.p-bubble {
+  width: 46px; height: 46px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.p-bubble.cyan   { background: rgba(0,212,255,0.12);  border: 2px solid var(--cyan);   }
+.p-bubble.purple { background: rgba(124,58,237,0.12); border: 2px solid var(--purple); }
+.p-bubble.green  { background: rgba(16,185,129,0.12); border: 2px solid var(--green);  }
+.p-bubble.amber  { background: rgba(245,158,11,0.12); border: 2px solid var(--amber);  }
+.p-bubble.red    { background: rgba(239,68,68,0.12);  border: 2px solid var(--red);    }
+.p-bubble.pink   { background: rgba(244,114,182,0.12);border: 2px solid var(--pink);   }
+.p-bubble.loop   { background: rgba(245,158,11,0.12); border: 2px dashed var(--amber); }
+.p-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); text-align: center; }
+.p-arrow { color: var(--border); font-size: 16px; flex-shrink: 0; }
+.p-arrow.loop-arrow { color: var(--amber); font-size: 14px; }
+
+/* ── stat blocks ──────────────────────────────────────────────────── */
+.stat { text-align: center; padding: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+.stat-num { font-size: 2.4rem; font-weight: 900; line-height: 1; }
+.stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+
+/* ── code-like badges ─────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  margin: 3px;
+}
+.badge.cyan   { background: rgba(0,212,255,0.12);  color: var(--cyan);   border: 1px solid rgba(0,212,255,0.3); }
+.badge.purple { background: rgba(124,58,237,0.12); color: #a78bfa;       border: 1px solid rgba(124,58,237,0.3); }
+.badge.green  { background: rgba(16,185,129,0.12); color: var(--green);  border: 1px solid rgba(16,185,129,0.3); }
+.badge.amber  { background: rgba(245,158,11,0.12); color: var(--amber);  border: 1px solid rgba(245,158,11,0.3); }
+
+/* ── divider ──────────────────────────────────────────────────────── */
+.divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; width: 100%; }
+
+/* ── highlight text ───────────────────────────────────────────────── */
+.hl-cyan   { color: var(--cyan);   font-weight: 700; }
+.hl-purple { color: #a78bfa;       font-weight: 700; }
+.hl-green  { color: var(--green);  font-weight: 700; }
+.hl-amber  { color: var(--amber);  font-weight: 700; }
+.hl-red    { color: var(--red);    font-weight: 700; }
+
+/* ── loop annotation ──────────────────────────────────────────────── */
+.loop-tag {
+  display: inline-block;
+  background: rgba(245,158,11,0.1);
+  color: var(--amber);
+  border: 1px solid rgba(245,158,11,0.3);
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ── reveal overrides ─────────────────────────────────────────────── */
+.reveal .progress      { background: var(--border); height: 3px; }
+.reveal .progress span { background: var(--cyan); }
+.reveal .controls button { color: var(--muted) !important; }
+.reveal .controls button:hover { color: var(--cyan) !important; }
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ─── 1. TITLE ──────────────────────────────────────────────────── -->
+<section class="center">
+  <div class="label">CS / AI Agents · UVA</div>
+  <h1>AI Agents<br>Research Assistant</h1>
+  <p style="color:var(--muted);font-size:1.1rem;max-width:520px">
+    A multi-agent LangGraph pipeline that turns a research question into
+    grounded synthesis, tested hypotheses, and a full experiment design.
+  </p>
+  <hr class="divider" style="width:60px;border-color:var(--cyan);margin:24px auto">
+  <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+    <span class="badge cyan">LangGraph</span>
+    <span class="badge purple">Claude Sonnet</span>
+    <span class="badge green">Semantic Scholar</span>
+    <span class="badge amber">ArXiv</span>
+    <span class="badge cyan">Streamlit</span>
+  </div>
+</section>
+
+<!-- ─── 2. MOTIVATION ─────────────────────────────────────────────── -->
+<section>
+  <span class="slide-num">02 / 12</span>
+  <div class="label">Why we built this</div>
+  <h2>The Problem</h2>
+  <div class="grid-2" style="gap:14px">
+    <div class="card accent-red">
+      <div class="card-title red">Information overload</div>
+      <p>AI agents is one of the fastest-growing subfields. Thousands of new papers per month — impossible to track manually.</p>
+    </div>
+    <div class="card accent-amber">
+      <div class="card-title amber">Keyword search is shallow</div>
+      <p>Search engines return what matches your query. They don't know what's foundational, what contradicts what, or what's missing.</p>
+    </div>
+    <div class="card accent-purple">
+      <div class="card-title purple">Synthesis is slow</div>
+      <p>Reading 20 papers, identifying themes, spotting gaps — that's days of work before you can even form a hypothesis.</p>
+    </div>
+    <div class="card accent-cyan">
+      <div class="card-title cyan">Hypotheses go unchallenged</div>
+      <p>Most researchers don't have an adversary who reads the literature and argues against their ideas before they invest months in an experiment.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 3. WHAT WE BUILT ──────────────────────────────────────────── -->
+<section>
+  <span class="slide-num">03 / 12</span>
+  <div class="label">Overview</div>
+  <h2>What We Built</h2>
+  <p style="color:var(--muted);margin-bottom:28px">
+    A fully automated, multi-agent research pipeline. Give it a question — get back a complete research brief.
+  </p>
+  <div class="grid-3">
+    <div class="stat">
+      <div class="stat-num hl-cyan">7</div>
+      <div class="stat-label">Specialized Agents</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num hl-purple">2</div>
+      <div class="stat-label">Reasoning Loops</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num hl-green">3</div>
+      <div class="stat-label">Paper Sources</div>
+    </div>
+  </div>
+  <hr class="divider">
+  <ul>
+    <li>Searches <span class="hl-cyan">Semantic Scholar</span> + <span class="hl-cyan">ArXiv</span> in parallel, then expands via the <span class="hl-green">citation graph</span></li>
+    <li>Claude critiques and filters papers, synthesizes themes with <span class="hl-amber">grounded citations</span></li>
+    <li>Generates hypotheses, stress-tests them with an <span class="hl-purple">adversarial agent</span>, refines if weak</li>
+    <li>Designs a concrete experiment for the strongest surviving hypothesis</li>
+  </ul>
+</section>
+
+<!-- ─── 4. THE PIPELINE ───────────────────────────────────────────── -->
+<section class="center">
+  <span class="slide-num">04 / 12</span>
+  <div class="label">Architecture</div>
+  <h2>The 7-Node Pipeline</h2>
+  <div class="pipeline">
+    <div class="p-node">
+      <div class="p-bubble cyan">🔍</div>
+      <div class="p-label" style="color:var(--cyan)">Search</div>
+    </div>
+    <div class="p-arrow">›</div>
+    <div class="p-node">
+      <div class="p-bubble cyan">⚖️</div>
+      <div class="p-label" style="color:var(--cyan)">Critic</div>
+    </div>
+    <div class="p-arrow loop-arrow">↩</div>
+    <div class="p-node">
+      <div class="p-bubble green">❄️</div>
+      <div class="p-label" style="color:var(--green)">Snowball</div>
+    </div>
+    <div class="p-arrow">›</div>
+    <div class="p-node">
+      <div class="p-bubble purple">🧠</div>
+      <div class="p-label" style="color:#a78bfa">Synthesis</div>
+    </div>
+    <div class="p-arrow">›</div>
+    <div class="p-node">
+      <div class="p-bubble purple">💡</div>
+      <div class="p-label" style="color:#a78bfa">Hypotheses</div>
+    </div>
+    <div class="p-arrow loop-arrow">⇄</div>
+    <div class="p-node">
+      <div class="p-bubble amber">⚔️</div>
+      <div class="p-label" style="color:var(--amber)">Advocate</div>
+    </div>
+    <div class="p-arrow">›</div>
+    <div class="p-node">
+      <div class="p-bubble green">🧪</div>
+      <div class="p-label" style="color:var(--green)">Experiment</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:20px;margin-top:20px;justify-content:center">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="color:var(--amber);font-weight:900">↩</span>
+      <span style="font-size:0.8rem;color:var(--muted)">Retry loop if &lt; 5 relevant papers</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="color:var(--amber);font-weight:900">⇄</span>
+      <span style="font-size:0.8rem;color:var(--muted)">Refinement loop if viability &lt; 6</span>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 5. FINDING PAPERS ─────────────────────────────────────────── -->
+<section>
+  <span class="slide-num">05 / 12</span>
+  <div class="label">Nodes 1 – 3</div>
+  <h2>Finding the Right Papers</h2>
+  <div class="card accent-cyan" style="margin-bottom:10px">
+    <div class="card-title cyan">🔍 search_node — parallel retrieval</div>
+    <p>Queries Semantic Scholar and ArXiv simultaneously using Python threads. Returns up to 20 deduplicated papers. On retry, auto-broadens the query by stripping the most specific term.</p>
+  </div>
+  <div class="card accent-amber" style="margin-bottom:10px">
+    <div class="card-title amber">⚖️ critic_node — Claude relevance filter</div>
+    <p>Claude scores every paper 1–10 against the research question with a one-line reason. Only papers scoring ≥ 6 proceed. If fewer than 5 pass, the loop retries with a broader query (max 2×).</p>
+  </div>
+  <div class="card accent-green">
+    <div class="card-title green">❄️ snowball_node — citation graph expansion</div>
+    <p>Fetches <strong>references</strong> and <strong>citations</strong> for the top 4 relevant papers from the Semantic Scholar graph API — surfacing foundational work and recent follow-ups that keyword search misses entirely.</p>
+  </div>
+</section>
+
+<!-- ─── 6. GROUNDED SYNTHESIS ─────────────────────────────────────── -->
+<section>
+  <span class="slide-num">06 / 12</span>
+  <div class="label">Node 4</div>
+  <h2>Grounded Synthesis</h2>
+  <p style="color:var(--muted);margin-bottom:24px">
+    The core problem with LLM synthesis: it invents plausible-sounding themes that aren't actually in the papers.
+    We solve this with <span class="hl-cyan">mandatory citation indices</span>.
+  </p>
+  <div class="grid-2">
+    <div>
+      <h3>What Claude must return</h3>
+      <div class="card">
+        <p style="font-family:monospace;font-size:0.8rem;color:#94a3b8;line-height:1.8">
+          themes: [{<br>
+          &nbsp;&nbsp;"claim": "Tool-use agents...",<br>
+          &nbsp;&nbsp;"paper_indices": [0, 3, 7]<br>
+          }]<br>
+          gaps: [...]<br>
+          contradictions: [...]<br>
+          open_questions: [...]
+        </p>
+      </div>
+    </div>
+    <div>
+      <h3>Validation step</h3>
+      <ul>
+        <li>After Claude responds, each claim's <code style="color:var(--cyan)">paper_indices</code> are checked against the actual paper list</li>
+        <li>Any claim where <strong>all indices are out of range</strong> is silently dropped</li>
+        <li>Valid indices are mapped to titles and shown as citation badges in the UI</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 7. THE REFINEMENT LOOP ────────────────────────────────────── -->
+<section>
+  <span class="slide-num">07 / 12</span>
+  <div class="label">Nodes 5 – 6 · The key reasoning loop</div>
+  <h2>Adversarial Hypothesis Refinement</h2>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+    <span class="loop-tag">↺ up to 2 iterations</span>
+    <span style="font-size:0.85rem;color:var(--muted)">Triggers when any hypothesis scores &lt; 6 viability</span>
+  </div>
+  <div class="card accent-purple" style="margin-bottom:10px">
+    <div class="card-title purple">💡 hypothesis_node</div>
+    <p><strong>Pass 1:</strong> generates 3 novel hypotheses from the synthesis.<br>
+    <strong>Pass 2+:</strong> receives prior hypotheses <em>and</em> their critiques side-by-side. Prompt instructs Claude to produce "meaningfully different and stronger" replacements that directly address each counterargument.</p>
+  </div>
+  <div class="card accent-amber">
+    <div class="card-title amber">⚔️ advocate_node — devil's advocate</div>
+    <p>For each hypothesis: lists counterarguments citing specific papers, identifies logical flaws and untestable assumptions, produces a refined claim, and assigns a <strong>viability score 1–10</strong>. The graph routes back if any score &lt; 6.</p>
+  </div>
+</section>
+
+<!-- ─── 8. EXPERIMENT DESIGN ──────────────────────────────────────── -->
+<section>
+  <span class="slide-num">08 / 12</span>
+  <div class="label">Node 7</div>
+  <h2>Experiment Design</h2>
+  <p style="color:var(--muted);margin-bottom:24px">
+    The hypothesis that best <span class="hl-green">survived adversarial review</span> (highest viability score) is selected — not always hypothesis #1.
+  </p>
+  <div class="grid-2">
+    <div class="card accent-green">
+      <div class="card-title green">What gets designed</div>
+      <ul style="margin-top:8px">
+        <li>Step-by-step <strong>methodology</strong></li>
+        <li><strong>Baseline</strong> to compare against</li>
+        <li>Concrete <strong>metrics</strong> for success</li>
+        <li>Specific <strong>datasets</strong> to use</li>
+        <li><strong>Failure modes</strong> + how to detect them</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="margin-bottom:12px">Selection logic</h3>
+      <div class="card" style="margin-bottom:8px">
+        <p style="font-family:monospace;font-size:0.82rem;color:#94a3b8">
+          top = max(hypotheses,<br>
+          &nbsp;&nbsp;key=lambda h:<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;h["viability_score"])
+        </p>
+      </div>
+      <p style="font-size:0.88rem;color:var(--muted)">
+        Viability is set by the advocate after the final review round — meaning the experiment is always built on the hypothesis that best withstood critique.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 9. TECH STACK ─────────────────────────────────────────────── -->
+<section>
+  <span class="slide-num">09 / 12</span>
+  <div class="label">Under the hood</div>
+  <h2>Tech Stack</h2>
+  <div class="grid-2" style="gap:14px">
+    <div class="card accent-purple">
+      <div class="card-title purple">LangGraph</div>
+      <p>StateGraph with typed state, conditional edges, and native loop support. Both retry loops are first-class graph edges — not hacks in application logic.</p>
+    </div>
+    <div class="card accent-cyan">
+      <div class="card-title cyan">Anthropic Claude</div>
+      <p><code style="font-size:0.8rem">claude-sonnet-4-20250514</code>. Every agent has a distinct system prompt. All outputs are structured JSON with a retry-on-parse-failure fallback.</p>
+    </div>
+    <div class="card accent-green">
+      <div class="card-title green">Semantic Scholar + ArXiv</div>
+      <p>S2 Graph API for paper search and citation graph traversal (free, no auth). ArXiv Python package for parallel retrieval. Deduplication by normalized title.</p>
+    </div>
+    <div class="card accent-amber">
+      <div class="card-title amber">Streamlit</div>
+      <p>Custom dark theme via <code style="font-size:0.8rem">config.toml</code> + injected CSS. Live node status using a background thread + queue. No page refresh needed.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 10. KEY IMPROVEMENTS ──────────────────────────────────────── -->
+<section>
+  <span class="slide-num">10 / 12</span>
+  <div class="label">Design decisions</div>
+  <h2>Three Rigor Improvements</h2>
+  <div class="card accent-green" style="margin-bottom:10px">
+    <div class="card-title green">1 · Citation Snowballing</div>
+    <p>After the critic selects relevant papers, we fetch their references <em>and</em> citations from the S2 graph API in parallel. This surfaces foundational work and recent follow-ups that keyword search is blind to — improving everything downstream without extra Claude calls.</p>
+  </div>
+  <div class="card accent-cyan" style="margin-bottom:10px">
+    <div class="card-title cyan">2 · Grounded Synthesis</div>
+    <p>Synthesis claims must cite paper indices. Uncited claims are dropped post-response. This closes the hallucination gap: Claude can only assert things traceable to documents we actually retrieved.</p>
+  </div>
+  <div class="card accent-amber">
+    <div class="card-title amber">3 · Adversarial Refinement Loop</div>
+    <p>The advocate isn't decorative — weak hypotheses trigger a real second pass where Claude sees its own critiques and must produce stronger alternatives. The experiment is built on a hypothesis that survived attack, not just one that was generated.</p>
+  </div>
+</section>
+
+<!-- ─── 11. FUTURE WORK ───────────────────────────────────────────── -->
+<section>
+  <span class="slide-num">11 / 12</span>
+  <div class="label">What's next</div>
+  <h2>Future Work</h2>
+  <div class="grid-2">
+    <div>
+      <h3>More rigour</h3>
+      <ul>
+        <li><strong>Human-in-the-loop checkpoint</strong> after critic — let the researcher prune or add papers before synthesis</li>
+        <li><strong>Synthesis quality loop</strong> — score grounding density, retry if too vague</li>
+        <li><strong>Multi-round debate</strong> — hypothesis and advocate trade turns, not just one challenge</li>
+        <li><strong>Statistical power analysis</strong> in experiment design</li>
+      </ul>
+    </div>
+    <div>
+      <h3>More capability</h3>
+      <ul>
+        <li><strong>Persistent sessions</strong> — save and resume runs, compare across questions</li>
+        <li><strong>Additional sources</strong> — ACL Anthology, PubMed, IEEE Xplore</li>
+        <li><strong>LaTeX export</strong> — related work section ready to drop into a paper</li>
+        <li><strong>Embedding-based deduplication</strong> — catch near-duplicate titles missed by string matching</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ─── 12. CLOSE ─────────────────────────────────────────────────── -->
+<section class="center">
+  <div class="label">AI Agents Research Assistant</div>
+  <h1 style="font-size:2.4rem">From question<br>to experiment design</h1>
+  <p style="color:var(--muted);max-width:480px;margin:16px auto 32px">
+    7 agents · 2 reasoning loops · grounded citations · adversarial refinement
+  </p>
+  <hr class="divider" style="width:60px;border-color:var(--cyan);margin:0 auto 28px">
+  <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+    <span class="badge cyan">github.com/whozpj/Academic-Research-Assistant</span>
+  </div>
+  <p style="color:var(--dim);font-size:0.8rem;margin-top:32px">
+    ← → to navigate &nbsp;·&nbsp; F for fullscreen &nbsp;·&nbsp; S for speaker notes
+  </p>
+</section>
+
+</div><!-- /slides -->
+</div><!-- /reveal -->
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@4.6.1/dist/reveal.js"></script>
+<script>
+Reveal.initialize({
+  hash: true,
+  slideNumber: false,
+  transition: 'fade',
+  transitionSpeed: 'fast',
+  backgroundTransition: 'none',
+  controls: true,
+  progress: true,
+  center: false,
+  width: 1100,
+  height: 680,
+  margin: 0,
+  minScale: 0.4,
+  maxScale: 2.0,
+  plugins: [],
+});
+</script>
+</body>
+</html>
