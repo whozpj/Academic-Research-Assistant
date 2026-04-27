@@ -42,7 +42,7 @@ st.markdown("""
 
 /* ---- primary button ---- */
 .stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #00d4ff, #7c3aed) !important;
+    background: #00d4ff !important;
     border: none !important;
     border-radius: 10px !important;
     font-weight: 700 !important;
@@ -210,7 +210,7 @@ st.markdown("""
 .syn-section-label.open    { color: #a78bfa; }
 
 .hyp-card {
-    background: linear-gradient(135deg, rgba(124,58,237,0.08) 0%, rgba(0,212,255,0.04) 100%);
+    background: rgba(124,58,237,0.06);
     border: 1px solid rgba(124,58,237,0.25);
     border-radius: 14px;
     padding: 20px 22px;
@@ -223,7 +223,7 @@ st.markdown("""
     margin-bottom: 14px;
 }
 .hyp-num {
-    background: linear-gradient(135deg, #7c3aed, #00d4ff);
+    background: #7c3aed;
     color: #fff;
     font-weight: 800;
     font-size: 0.8rem;
@@ -241,7 +241,7 @@ st.markdown("""
 .viability-bar-inner {
     height: 100%;
     border-radius: 3px;
-    background: linear-gradient(90deg, #7c3aed, #00d4ff);
+    background: #00d4ff;
 }
 .viability-score { color: #00d4ff; font-weight: 700; font-size: 0.85rem; }
 
@@ -604,8 +604,7 @@ def render_experiment_section(exp: dict) -> str:
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div style="text-align:center;padding:10px 0 24px">
-  <div style="font-size:2.6rem;font-weight:900;background:linear-gradient(90deg,#00d4ff,#7c3aed);
-       -webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-0.02em">
+  <div style="font-size:2.6rem;font-weight:900;color:#00d4ff;letter-spacing:-0.02em">
     AI Agents Research Assistant
   </div>
   <div style="color:#475569;font-size:0.95rem;margin-top:6px;letter-spacing:0.04em">
