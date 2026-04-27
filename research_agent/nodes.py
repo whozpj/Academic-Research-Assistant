@@ -4,8 +4,14 @@ import anthropic
 from typing import Any
 
 from state import ResearchState
-from search import search_papers, broaden_query
-from prompts import CRITIC_SYSTEM, SYNTHESIS_SYSTEM, HYPOTHESIS_SYSTEM, EXPERIMENT_SYSTEM
+from search import search_papers, broaden_query, fetch_snowball_papers
+from prompts import (
+    CRITIC_SYSTEM,
+    SYNTHESIS_SYSTEM,
+    HYPOTHESIS_SYSTEM,
+    EXPERIMENT_SYSTEM,
+    ADVOCATE_SYSTEM,
+)
 
 _client = None
 
@@ -41,7 +47,6 @@ def _call_claude(system: str, user: str, retry_json: bool = True) -> Any:
                 messages=[{"role": "user", "content": retry_prompt}],
             )
             text2 = response2.content[0].text.strip()
-            # Strip markdown fences if present
             if text2.startswith("```"):
                 lines = text2.split("\n")
                 text2 = "\n".join(lines[1:-1]) if len(lines) > 2 else text2
@@ -53,10 +58,8 @@ def search_node(state: ResearchState) -> ResearchState:
     try:
         query = state["research_question"]
         retry_count = state.get("retry_count", 0)
-
         if retry_count > 0:
             query = broaden_query(query)
-
         papers = search_papers(query)
         return {**state, "raw_papers": papers}
     except Exception as e:
@@ -86,7 +89,6 @@ Return a JSON object with key "evaluations" containing a list of objects, one pe
 
         result = _call_claude(CRITIC_SYSTEM, user_prompt)
         evaluations = result.get("evaluations", [])
-
         score_map = {e["index"]: e for e in evaluations if e.get("score", 0) >= 6}
 
         relevant = []
@@ -97,7 +99,6 @@ Return a JSON object with key "evaluations" containing a list of objects, one pe
                     "relevance_score": score_map[i]["score"],
                     "relevance_reason": score_map[i]["reason"],
                 })
-
         relevant.sort(key=lambda x: x["relevance_score"], reverse=True)
 
         new_retry_count = retry_count
@@ -109,29 +110,71 @@ Return a JSON object with key "evaluations" containing a list of objects, one pe
         return {**state, "error": f"critic_node failed: {e}"}
 
 
+def snowball_node(state: ResearchState) -> ResearchState:
+    """Expand the corpus via citation graph: fetch references + citations for top relevant papers."""
+    try:
+        relevant = state.get("relevant_papers", [])
+        snowballed = fetch_snowball_papers(relevant, max_seed_papers=4)
+        return {**state, "snowballed_papers": snowballed}
+    except Exception as e:
+        # Non-fatal: proceed with empty snowball rather than aborting pipeline
+        return {**state, "snowballed_papers": [], "error": None}
+
+
+def _validate_grounded_items(items: list, max_index: int) -> list:
+    """Keep items that cite at least one valid paper index; strip out-of-range indices."""
+    validated = []
+    for item in items:
+        indices = item.get("paper_indices", [])
+        valid = [i for i in indices if isinstance(i, int) and 0 <= i < max_index]
+        if valid:
+            validated.append({**item, "paper_indices": valid})
+    return validated
+
+
 def synthesis_node(state: ResearchState) -> ResearchState:
     try:
-        papers = state.get("relevant_papers", [])
+        relevant = state.get("relevant_papers", [])
+        snowballed = state.get("snowballed_papers", [])
+        all_papers = relevant + snowballed
         question = state["research_question"]
 
         papers_text = "\n\n".join(
-            f"Title: {p['title']}\nYear: {p.get('year', 'N/A')}\n"
-            f"Abstract: {p['abstract'][:600]}"
-            for p in papers
+            f"[{i}] Title: {p['title']}\nYear: {p.get('year', 'N/A')}\n"
+            f"Abstract: {p['abstract'][:500]}"
+            for i, p in enumerate(all_papers)
         )
 
         user_prompt = f"""Research question: {question}
 
-Relevant papers:
+Papers (indexed 0 to {len(all_papers) - 1}):
 {papers_text}
 
 Return a JSON object with exactly these keys:
-- themes: list of 3-5 strings, each a major theme across the papers
-- gaps: list of strings, each an open problem not addressed by existing work
-- contradictions: list of objects with keys "paper_a", "paper_b", "description" (papers that disagree)
-- open_questions: list of strings, specific unanswered questions in the literature"""
+- themes: list of objects with keys:
+    "claim" (string: the theme), "paper_indices" (list of ints supporting this theme)
+- gaps: list of objects with keys:
+    "claim" (string: the gap), "paper_indices" (list of ints that reveal this gap)
+- contradictions: list of objects with keys:
+    "paper_a" (title string), "paper_b" (title string), "description" (string),
+    "paper_indices" (list of ints for the two contradicting papers)
+- open_questions: list of objects with keys:
+    "claim" (string: the question), "paper_indices" (list of ints that motivate it)
+
+Use 3-5 themes. Every claim must cite at least one paper index from the list above."""
 
         result = _call_claude(SYNTHESIS_SYSTEM, user_prompt)
+        max_idx = len(all_papers)
+
+        # Validate and filter ungrounded claims
+        result["themes"] = _validate_grounded_items(result.get("themes", []), max_idx)
+        result["gaps"] = _validate_grounded_items(result.get("gaps", []), max_idx)
+        result["contradictions"] = _validate_grounded_items(result.get("contradictions", []), max_idx)
+        result["open_questions"] = _validate_grounded_items(result.get("open_questions", []), max_idx)
+
+        # Attach paper titles to indices for UI rendering
+        result["_paper_index_map"] = {i: p["title"] for i, p in enumerate(all_papers)}
+
         return {**state, "synthesis": result}
     except Exception as e:
         return {**state, "error": f"synthesis_node failed: {e}"}
@@ -142,10 +185,13 @@ def hypothesis_node(state: ResearchState) -> ResearchState:
         synthesis = state.get("synthesis", {})
         question = state["research_question"]
 
+        # Exclude internal index map from the prompt
+        synthesis_for_prompt = {k: v for k, v in synthesis.items() if not k.startswith("_")}
+
         user_prompt = f"""Research question: {question}
 
 Synthesis of existing literature:
-{json.dumps(synthesis, indent=2)}
+{json.dumps(synthesis_for_prompt, indent=2)}
 
 Generate exactly 3 novel, testable research hypotheses.
 Return a JSON object with key "hypotheses" containing a list of exactly 3 objects, each with:
@@ -161,18 +207,72 @@ Return a JSON object with key "hypotheses" containing a list of exactly 3 object
         return {**state, "error": f"hypothesis_node failed: {e}"}
 
 
+def advocate_node(state: ResearchState) -> ResearchState:
+    """Devil's advocate: challenge each hypothesis, score viability, produce refined claims."""
+    try:
+        hypotheses = state.get("hypotheses", [])
+        relevant = state.get("relevant_papers", [])
+        snowballed = state.get("snowballed_papers", [])
+        all_papers = relevant + snowballed
+        question = state["research_question"]
+
+        papers_summary = "\n".join(
+            f"[{i}] {p['title']} ({p.get('year', 'N/A')})"
+            for i, p in enumerate(all_papers)
+        )
+
+        hypotheses_text = json.dumps(
+            [{"index": i, **h} for i, h in enumerate(hypotheses)], indent=2
+        )
+
+        user_prompt = f"""Research question: {question}
+
+Available papers:
+{papers_summary}
+
+Hypotheses to critique:
+{hypotheses_text}
+
+For each hypothesis, act as a rigorous peer reviewer. Return a JSON object with key "critiques"
+containing a list of exactly {len(hypotheses)} objects, each with:
+- hypothesis_index: integer (0-based)
+- counterarguments: list of strings (cite paper indices where relevant, e.g. "Paper [3] already shows X")
+- logical_flaws: list of strings (untestable assumptions, circular reasoning, scope issues)
+- refined_claim: a stronger, more precise version of the hypothesis that addresses the critique
+- viability_score: integer 1-10 (10 = extremely strong hypothesis that clearly survives critique)"""
+
+        result = _call_claude(ADVOCATE_SYSTEM, user_prompt)
+        critiques = result.get("critiques", [])
+
+        # Merge viability scores back into hypotheses so experiment_node can rank
+        critique_map = {c["hypothesis_index"]: c for c in critiques}
+        enriched_hypotheses = []
+        for i, h in enumerate(hypotheses):
+            critique = critique_map.get(i, {})
+            enriched_hypotheses.append({
+                **h,
+                "refined_claim": critique.get("refined_claim", h.get("claim", "")),
+                "viability_score": critique.get("viability_score", 5),
+            })
+
+        return {**state, "hypotheses": enriched_hypotheses, "hypothesis_critiques": critiques}
+    except Exception as e:
+        return {**state, "error": f"advocate_node failed: {e}"}
+
+
 def experiment_node(state: ResearchState) -> ResearchState:
     try:
         hypotheses = state.get("hypotheses", [])
         if not hypotheses:
             return {**state, "error": "experiment_node failed: no hypotheses available"}
 
-        top_hypothesis = hypotheses[0]
+        # Pick the hypothesis that best survived adversarial critique
+        top_hypothesis = max(hypotheses, key=lambda h: h.get("viability_score", 5))
         question = state["research_question"]
 
         user_prompt = f"""Research question: {question}
 
-Top hypothesis to test:
+Hypothesis to test (selected as most viable after adversarial review):
 {json.dumps(top_hypothesis, indent=2)}
 
 Design a concrete, reproducible experiment to test this hypothesis.
