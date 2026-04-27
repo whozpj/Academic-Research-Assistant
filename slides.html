@@ -209,6 +209,13 @@
     <span class="badge amber">ArXiv</span>
     <span class="badge cyan">Streamlit</span>
   </div>
+  <aside class="notes">
+    Thanks everyone. Today I'm presenting the AI Agents Academic Research Assistant — a project I built to automate the most painful parts of literature research in the AI agents field.
+
+    Instead of spending days reading papers just to form a single hypothesis, this system takes a research question and returns a full research brief: relevant papers, synthesized themes, novel hypotheses that have already been stress-tested, and a concrete experiment design.
+
+    Let me walk you through how it works.
+  </aside>
 </section>
 
 <!-- ─── 2. MOTIVATION ─────────────────────────────────────────────── -->
@@ -234,6 +241,17 @@
       <p>Most researchers don't have an adversary who reads the literature and argues against their ideas before they invest months in an experiment.</p>
     </div>
   </div>
+  <aside class="notes">
+    The motivation came from a very real set of frustrations.
+
+    First, information overload. AI agents is one of the hottest subfields right now — which means thousands of new papers every month. Nobody can keep up.
+
+    Second, keyword search is fundamentally shallow. You search for "tool-using LLM agents" and get papers containing those words — but miss the 2018 paper that introduced the concept everyone is building on, and the 2024 paper showing the approach doesn't generalize outside benchmarks.
+
+    Third, even if you find the right papers, synthesizing them is slow. Identifying themes, spotting contradictions, figuring out what's unsolved — that's days of work before you can write a single hypothesis.
+
+    Fourth — hypotheses go unchallenged. You come up with an idea, it sounds good, and you start building. Nobody tells you a paper from last year already partially answered it, or that your key assumption doesn't hold.
+  </aside>
 </section>
 
 <!-- ─── 3. WHAT WE BUILT ──────────────────────────────────────────── -->
@@ -265,6 +283,11 @@
     <li>Generates hypotheses, stress-tests them with an <span class="hl-purple">adversarial agent</span>, refines if weak</li>
     <li>Designs a concrete experiment for the strongest surviving hypothesis</li>
   </ul>
+  <aside class="notes">
+    So what did we build? A fully automated multi-agent pipeline — seven specialized agents, two reasoning loops, and three paper sources. You give it a research question and it returns a complete research brief.
+
+    The three numbers matter: seven agents, each with a different role and system prompt — not one LLM doing everything. Two loops — not a linear pipeline — where the system backtracks based on quality signals. And three sources: Semantic Scholar, ArXiv, and the citation graph, which keyword search never gives you.
+  </aside>
 </section>
 
 <!-- ─── 4. THE PIPELINE ───────────────────────────────────────────── -->
@@ -318,6 +341,13 @@
       <span style="font-size:0.8rem;color:var(--muted)">Refinement loop if viability &lt; 6</span>
     </div>
   </div>
+  <aside class="notes">
+    Here's the full architecture. Left to right: Search retrieves papers in parallel. Critic filters by relevance. Snowball expands via citation graph. Synthesis identifies grounded themes. Hypotheses generates three ideas. Advocate challenges them. Experiment designs a study.
+
+    The two amber arrows are the loops. The first fires if fewer than five papers pass the relevance filter — query broadens, retry, up to twice.
+
+    The second loop — between Advocate and Hypotheses — is the key one. If any hypothesis scores below six on viability, hypothesis generation reruns with the critiques as input. The system uses its own feedback to improve. I'll come back to this.
+  </aside>
 </section>
 
 <!-- ─── 5. FINDING PAPERS ─────────────────────────────────────────── -->
@@ -337,6 +367,13 @@
     <div class="card-title green">❄️ snowball_node — citation graph expansion</div>
     <p>Fetches <strong>references</strong> and <strong>citations</strong> for the top 4 relevant papers from the Semantic Scholar graph API — surfacing foundational work and recent follow-ups that keyword search misses entirely.</p>
   </div>
+  <aside class="notes">
+    Search fires two API calls simultaneously using Python threads — deduplicates by normalized title. On retry, strips the longest term automatically. "Multi-agent reinforcement learning cooperation" becomes "multi-agent learning cooperation" without user input.
+
+    Critic sends all twenty papers to Claude alongside the research question, gets a score and one-line reason for each. Below six gets dropped. First quality gate.
+
+    Snowball is the most novel piece here. For the top four relevant papers, we hit the Semantic Scholar graph API and fetch both their references — what they cite — and their citations — who cites them. These are papers keyword search never surfaces, but they're what the field is actually built on.
+  </aside>
 </section>
 
 <!-- ─── 6. GROUNDED SYNTHESIS ─────────────────────────────────────── -->
@@ -372,6 +409,13 @@
       </ul>
     </div>
   </div>
+  <aside class="notes">
+    If you just ask Claude to synthesize themes it will — and it sounds convincing. But some of those themes will be plausible-sounding ideas Claude knows from training data, not from the papers you gave it. That's a fundamental problem for research.
+
+    Our fix: mandatory citation indices. Every claim must include paper_indices pointing to real papers in our list. After Claude responds, we validate every index. If all the indices are out of range — meaning Claude invented references — the claim is silently dropped.
+
+    Only claims traceable to real documents survive. In the UI you can hover citation badges and see exactly which papers support each theme. This turns a black-box output into something verifiable.
+  </aside>
 </section>
 
 <!-- ─── 7. THE REFINEMENT LOOP ────────────────────────────────────── -->
@@ -392,6 +436,17 @@
     <div class="card-title amber">⚔️ advocate_node — devil's advocate</div>
     <p>For each hypothesis: lists counterarguments citing specific papers, identifies logical flaws and untestable assumptions, produces a refined claim, and assigns a <strong>viability score 1–10</strong>. The graph routes back if any score &lt; 6.</p>
   </div>
+  <aside class="notes">
+    This is the part I'm most proud of — the adversarial refinement loop. This is what makes the graph genuinely non-linear.
+
+    Hypothesis node generates three research hypotheses from the synthesis on the first pass.
+
+    Then Advocate plays devil's advocate. For each hypothesis it lists specific counterarguments — often citing papers by index — flags logical flaws and untestable assumptions, produces a refined version, and assigns a viability score.
+
+    Here's the key: if any score comes back below six, the graph routes back to Hypothesis node. But on the second pass it doesn't start fresh — it receives the previous hypotheses and their critiques side by side, and the prompt explicitly instructs Claude to generate "meaningfully different and stronger" replacements that address the specific counterarguments.
+
+    This is a real feedback loop between two agents. The generator learns from the critic. Up to two iterations.
+  </aside>
 </section>
 
 <!-- ─── 8. EXPERIMENT DESIGN ──────────────────────────────────────── -->
@@ -427,6 +482,13 @@
       </p>
     </div>
   </div>
+  <aside class="notes">
+    The final node designs a concrete, reproducible experiment.
+
+    The selection step is important — it doesn't take hypothesis number one. It takes max(hypotheses, key=viability_score) — the one that best survived adversarial review. If hypothesis three turned out most defensible, the experiment is designed around that.
+
+    Output covers: step-by-step methodology, baseline to compare against, concrete measurable metrics, specific dataset recommendations, and failure modes — what could go wrong and how you'd detect it early. All structured JSON, validated on parse.
+  </aside>
 </section>
 
 <!-- ─── 9. TECH STACK ─────────────────────────────────────────────── -->
@@ -452,6 +514,13 @@
       <p>Custom dark theme via <code style="font-size:0.8rem">config.toml</code> + injected CSS. Live node status using a background thread + queue. No page refresh needed.</p>
     </div>
   </div>
+  <aside class="notes">
+    LangGraph for the graph. The two loops are conditional edges defined in the graph — not if-statements in application code. That means the graph is inspectable and reproducible.
+
+    Claude Sonnet for all reasoning. Every agent has a distinct system prompt. Structured JSON output with a retry-on-parse-failure mechanism built in.
+
+    Semantic Scholar and ArXiv are both free, no authentication required. Streamlit for the UI — live pipeline tracker using a background thread feeding a queue, so the graph and UI run independently without blocking each other.
+  </aside>
 </section>
 
 <!-- ─── 10. KEY IMPROVEMENTS ──────────────────────────────────────── -->
@@ -471,6 +540,15 @@
     <div class="card-title amber">3 · Adversarial Refinement Loop</div>
     <p>The advocate isn't decorative — weak hypotheses trigger a real second pass where Claude sees its own critiques and must produce stronger alternatives. The experiment is built on a hypothesis that survived attack, not just one that was generated.</p>
   </div>
+  <aside class="notes">
+    Three decisions that moved this from a prototype to something you can trust.
+
+    Citation snowballing: adding citation graph expansion was a single API addition, but it fundamentally changes corpus quality — you stop being limited to papers containing your exact query terms.
+
+    Grounded synthesis: the original had no validation. The hallucination problem wasn't obvious because the output sounded plausible. Adding index validation costs nothing at runtime but makes every claim traceable.
+
+    The adversarial loop: the original had a one-shot advocate whose critiques nobody acted on. Making critiques feed back into a second hypothesis generation pass was the biggest architectural change — and made the biggest difference to output quality. The hypotheses after iteration two are consistently more specific and harder to dismiss.
+  </aside>
 </section>
 
 <!-- ─── 11. FUTURE WORK ───────────────────────────────────────────── -->
@@ -498,6 +576,13 @@
       </ul>
     </div>
   </div>
+  <aside class="notes">
+    A few directions this could go next.
+
+    On rigor: a human-in-the-loop checkpoint after the critic so a researcher can prune false positives before synthesis. A synthesis quality loop that scores grounding density and retries if too vague. Multi-round debate — hypothesis and advocate trading turns until convergence.
+
+    On capability: persistent sessions to compare runs across questions. ACL Anthology for NLP-specific work. LaTeX export so the related work section drops straight into a paper draft.
+  </aside>
 </section>
 
 <!-- ─── 12. CLOSE ─────────────────────────────────────────────────── -->
@@ -514,6 +599,11 @@
   <p style="color:var(--dim);font-size:0.8rem;margin-top:32px">
     ← → to navigate &nbsp;·&nbsp; F for fullscreen &nbsp;·&nbsp; S for speaker notes
   </p>
+  <aside class="notes">
+    To summarize: seven specialized agents, two reasoning loops that make the system genuinely non-linear, citation grounding that prevents hallucination, and an adversarial review process that ensures the final experiment is designed around a hypothesis that survived real scrutiny.
+
+    The code is all on GitHub. Happy to take questions.
+  </aside>
 </section>
 
 </div><!-- /slides -->
