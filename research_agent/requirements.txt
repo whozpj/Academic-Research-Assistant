@@ -3,3 +3,4 @@ langgraph
 anthropic
 arxiv
 requests
+python-dotenv
