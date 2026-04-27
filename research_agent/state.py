@@ -12,3 +12,4 @@ class ResearchState(TypedDict):
     experiment_design: dict
     error: Optional[str]
     retry_count: int
+    hypothesis_iteration: int

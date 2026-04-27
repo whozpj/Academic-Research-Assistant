@@ -187,11 +187,32 @@ def hypothesis_node(state: ResearchState) -> ResearchState:
     try:
         synthesis = state.get("synthesis", {})
         question = state["research_question"]
+        critiques = state.get("hypothesis_critiques", [])
+        iteration = state.get("hypothesis_iteration", 0)
 
-        # Exclude internal index map from the prompt
         synthesis_for_prompt = {k: v for k, v in synthesis.items() if not k.startswith("_")}
 
-        user_prompt = f"""Research question: {question}
+        if iteration > 0 and critiques:
+            # Refinement pass: show previous hypotheses and their critiques
+            prev_hypotheses = state.get("hypotheses", [])
+            user_prompt = f"""Research question: {question}
+
+Synthesis of existing literature:
+{json.dumps(synthesis_for_prompt, indent=2)}
+
+Your previous hypotheses were reviewed by a devil's advocate and found to be weak.
+Here are the previous hypotheses and critiques you must address:
+{json.dumps([{"hypothesis": h, "critique": c} for h, c in zip(prev_hypotheses, critiques)], indent=2)}
+
+Generate exactly 3 improved hypotheses that directly address the counterarguments and logical flaws above.
+Each new hypothesis must be meaningfully different from — and stronger than — the one it replaces.
+Return a JSON object with key "hypotheses" containing a list of exactly 3 objects, each with:
+- claim: the hypothesis statement (string)
+- motivation: why existing literature doesn't answer it (string)
+- falsification: what result would disprove it (string)
+- feasibility: "high", "medium", or "low" with a one-line reason (string)"""
+        else:
+            user_prompt = f"""Research question: {question}
 
 Synthesis of existing literature:
 {json.dumps(synthesis_for_prompt, indent=2)}
@@ -205,7 +226,7 @@ Return a JSON object with key "hypotheses" containing a list of exactly 3 object
 
         result = _call_claude(HYPOTHESIS_SYSTEM, user_prompt)
         hypotheses = result.get("hypotheses", [])
-        return {**state, "hypotheses": hypotheses}
+        return {**state, "hypotheses": hypotheses, "hypothesis_critiques": []}
     except Exception as e:
         return {**state, "error": f"hypothesis_node failed: {e}"}
 
@@ -258,7 +279,13 @@ containing a list of exactly {len(hypotheses)} objects, each with:
                 "viability_score": critique.get("viability_score", 5),
             })
 
-        return {**state, "hypotheses": enriched_hypotheses, "hypothesis_critiques": critiques}
+        new_iteration = state.get("hypothesis_iteration", 0) + 1
+        return {
+            **state,
+            "hypotheses": enriched_hypotheses,
+            "hypothesis_critiques": critiques,
+            "hypothesis_iteration": new_iteration,
+        }
     except Exception as e:
         return {**state, "error": f"advocate_node failed: {e}"}
 

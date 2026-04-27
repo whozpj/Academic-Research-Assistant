@@ -371,19 +371,27 @@ def _pipeline_next(node_id: str) -> str | None:
     return PIPELINE_IDS[idx + 1] if idx >= 0 and idx + 1 < len(PIPELINE_IDS) else None
 
 
-def render_pipeline(statuses: dict) -> str:
+def render_pipeline(statuses: dict, hyp_iter: int = 0) -> str:
     parts = []
+    loop_nodes = {"hypothesis_node", "advocate_node"}
     for i, (nid, icon, label, sub) in enumerate(PIPELINE):
         s = statuses.get(nid, "pending")
+        sub_text = sub
+        if hyp_iter > 0 and nid in loop_nodes and s in ("running", "complete"):
+            sub_text = f"iter {hyp_iter}/2"
         parts.append(
             f'<div class="p-node">'
             f'  <div class="p-bubble {s}">{icon}</div>'
             f'  <div class="p-label {s}">{label}</div>'
-            f'  <div class="p-sublabel {s}">{sub}</div>'
+            f'  <div class="p-sublabel {s}">{sub_text}</div>'
             f'</div>'
         )
         if i < len(PIPELINE) - 1:
-            parts.append('<div class="p-arrow">›</div>')
+            # Arrow between advocate and hypothesis pulses amber when looping
+            arrow_style = ""
+            if nid == "advocate_node" and hyp_iter > 0 and statuses.get("hypothesis_node") == "running":
+                arrow_style = ' style="color:#f59e0b;font-weight:900"'
+            parts.append(f'<div class="p-arrow"{arrow_style}>›</div>')
     return f'<div class="pipeline-wrap">{"".join(parts)}</div>'
 
 
@@ -638,6 +646,7 @@ if run_button and research_question.strip():
         "experiment_design": {},
         "error": None,
         "retry_count": 0,
+        "hypothesis_iteration": 0,
     }
 
     event_queue: queue.Queue = queue.Queue()
@@ -646,11 +655,9 @@ if run_button and research_question.strip():
         try:
             graph = build_graph()
             state = dict(initial_state)
-            completed = set()
             for event in graph.stream(state, stream_mode="updates"):
                 for node_name, node_state in event.items():
-                    if node_name in PIPELINE_IDS and node_name not in completed:
-                        completed.add(node_name)
+                    if node_name in PIPELINE_IDS:
                         state.update(node_state)
                         event_queue.put(("node_done", node_name, dict(state)))
             event_queue.put(("done", None, dict(state)))
@@ -675,7 +682,7 @@ if run_button and research_question.strip():
     node_statuses["search_node"] = "running"
     accumulated = dict(initial_state)
 
-    pipeline_ph.markdown(render_pipeline(node_statuses), unsafe_allow_html=True)
+    pipeline_ph.markdown(render_pipeline(node_statuses, 0), unsafe_allow_html=True)
 
     def refresh_sections(s):
         # Raw papers
@@ -778,16 +785,26 @@ if run_button and research_question.strip():
         if kind == "node_done":
             node_name = payload
             accumulated.update(snap)
+            hyp_iter = accumulated.get("hypothesis_iteration", 0)
 
-            node_statuses[node_name] = "complete" if not snap.get("error") else "error"
-            nxt = _pipeline_next(node_name)
-            if nxt and not snap.get("error"):
-                node_statuses[nxt] = "running"
+            if snap.get("error"):
+                node_statuses[node_name] = "error"
+            else:
+                node_statuses[node_name] = "complete"
+                # Loop-back: advocate fired and next is hypothesis again
+                if node_name == "advocate_node" and not snap.get("experiment_design"):
+                    node_statuses["hypothesis_node"] = "running"
+                    node_statuses["advocate_node"] = "pending"
+                else:
+                    nxt = _pipeline_next(node_name)
+                    if nxt:
+                        node_statuses[nxt] = "running"
 
-            pipeline_ph.markdown(render_pipeline(node_statuses), unsafe_allow_html=True)
+            iter_note = f" — iteration {hyp_iter}/2" if node_name in ("hypothesis_node", "advocate_node") and hyp_iter > 0 else ""
+            pipeline_ph.markdown(render_pipeline(node_statuses, hyp_iter), unsafe_allow_html=True)
             status_ph.markdown(
                 f'<div style="color:#64748b;font-size:0.82rem;text-align:center;padding:4px 0">'
-                f'⟳ {node_display.get(node_name, node_name)} — done</div>',
+                f'⟳ {node_display.get(node_name, node_name)}{iter_note} — done</div>',
                 unsafe_allow_html=True,
             )
             refresh_sections(accumulated)
@@ -798,7 +815,7 @@ if run_button and research_question.strip():
 
         elif kind == "done":
             accumulated.update(snap)
-            pipeline_ph.markdown(render_pipeline(node_statuses), unsafe_allow_html=True)
+            pipeline_ph.markdown(render_pipeline(node_statuses, accumulated.get("hypothesis_iteration", 0)), unsafe_allow_html=True)
             status_ph.markdown(
                 '<div style="color:#10b981;font-size:0.85rem;text-align:center;padding:6px 0;font-weight:600">'
                 '✓ Pipeline complete</div>',

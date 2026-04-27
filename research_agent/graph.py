@@ -12,6 +12,19 @@ from nodes import (
 )
 
 
+def _should_refine_hypotheses(state: ResearchState) -> str:
+    if state.get("error"):
+        return "end"
+    critiques = state.get("hypothesis_critiques", [])
+    iteration = state.get("hypothesis_iteration", 0)
+    if iteration >= 2:
+        return "proceed"
+    min_viability = min((c.get("viability_score", 10) for c in critiques), default=10)
+    if min_viability < 6:
+        return "refine"
+    return "proceed"
+
+
 def _should_retry(state: ResearchState) -> str:
     if state.get("error"):
         return "end"
@@ -49,7 +62,16 @@ def build_graph() -> StateGraph:
     graph.add_edge("snowball_node", "synthesis_node")
     graph.add_edge("synthesis_node", "hypothesis_node")
     graph.add_edge("hypothesis_node", "advocate_node")
-    graph.add_edge("advocate_node", "experiment_node")
+
+    graph.add_conditional_edges(
+        "advocate_node",
+        _should_refine_hypotheses,
+        {
+            "refine": "hypothesis_node",
+            "proceed": "experiment_node",
+            "end": END,
+        },
+    )
     graph.add_edge("experiment_node", END)
 
     return graph.compile()
